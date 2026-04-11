@@ -1,0 +1,14 @@
+{
+  "name": "konya-hanaso",
+  "version": "1.0.0",
+  "description": "Couple's discussion topic app",
+  "scripts": {
+    "start": "npm install && npm run dev",
+    "dev": "npx http-server public -p 3001 -c-1"
+  },
+  "author": "Taishi Sase",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
