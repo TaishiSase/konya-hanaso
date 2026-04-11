@@ -297,6 +297,7 @@ function renderTopicCard(topic, isHistory) {
   if (isHistory) {
     var resolvedDate = topic.resolved_at ? formatDate(topic.resolved_at) : '';
     html += '<div class="topic-meta">' + esc(addedByLabel) + ' が追加 · ' + esc(resolvedDate) + ' に解決</div>';
+    html += '<button class="btn-reopen" data-id="' + esc(topic.id) + '">↩ 話し合いに戻す</button>';
   } else {
     html += '<div class="topic-meta">' + esc(addedByLabel) + ' が追加 · ' + esc(formatRelativeDate(topic.created_at)) + '</div>';
   }
@@ -305,6 +306,11 @@ function renderTopicCard(topic, isHistory) {
 
   if (!isHistory) {
     card.addEventListener('click', function() { showTopicModal(topic.id, topic); });
+  } else {
+    card.querySelector('.btn-reopen').addEventListener('click', function(e) {
+      e.stopPropagation();
+      reopenTopic(topic.id);
+    });
   }
 
   return card;
@@ -448,7 +454,8 @@ function showResolveModal() {
   btn.disabled    = false;
   btn.textContent = '✅ 解決済みにする';
 
-  hideTopicModal();
+  // hideTopicModal() は使わない（currentTopicId がリセットされるため）
+  document.getElementById('topicModal').classList.remove('active');
 
   document.getElementById('resolveModal').classList.add('active');
   document.body.style.overflow = 'hidden';
@@ -496,6 +503,26 @@ async function resolveTopic() {
     errEl.textContent = '更新に失敗しました: ' + err.message;
     btn.disabled    = false;
     btn.textContent = '✅ 解決済みにする';
+  }
+}
+
+// ===== 話し合いに戻す =====
+async function reopenTopic(topicId) {
+  if (!confirm('このトピックを「話し合いたいこと」に戻しますか？')) return;
+
+  if (!await ensureDb()) { alert('データベースに接続できません'); return; }
+
+  try {
+    var result = await db.from('topics').update({
+      is_resolved:     false,
+      resolution_memo: null,
+      resolved_at:     null
+    }).eq('id', topicId);
+    if (result.error) throw result.error;
+    loadHistory();
+  } catch (err) {
+    console.error('戻すエラー:', err);
+    alert('操作に失敗しました');
   }
 }
 
