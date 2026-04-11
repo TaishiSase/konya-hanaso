@@ -42,6 +42,21 @@ async function initSupabase(config) {
   db = createClient(config.supabaseUrl, config.supabaseKey);
 }
 
+// db が null なら config.json から再初期化を試みる
+async function ensureDb() {
+  if (db) return true;
+  try {
+    var res    = await fetch('config.json');
+    var config = await res.json();
+    window._appConfig = config;
+    await initSupabase(config);
+    return !!db;
+  } catch (e) {
+    console.error('DB再初期化失敗:', e);
+    return false;
+  }
+}
+
 // ===== 認証 =====
 function checkAuth() {
   const t = localStorage.getItem('konya_auth_time');
@@ -154,6 +169,11 @@ async function loadTopics() {
   var container = document.getElementById('topicsList');
   container.innerHTML = '<p class="loading-msg">読み込み中…</p>';
 
+  if (!await ensureDb()) {
+    container.innerHTML = '<p class="error-msg">データベースに接続できません。<br>ページを再読み込みしてください。</p>';
+    return;
+  }
+
   try {
     var result = await db.from('topics')
       .select('*')
@@ -205,6 +225,11 @@ async function loadTopics() {
 async function loadHistory() {
   var container = document.getElementById('historyList');
   container.innerHTML = '<p class="loading-msg">読み込み中…</p>';
+
+  if (!await ensureDb()) {
+    container.innerHTML = '<p class="error-msg">データベースに接続できません。<br>ページを再読み込みしてください。</p>';
+    return;
+  }
 
   try {
     var result = await db.from('topics')
@@ -336,6 +361,12 @@ async function submitTopic() {
   btn.disabled    = true;
   btn.textContent = '追加中…';
 
+  if (!await ensureDb()) {
+    errEl.textContent = 'データベースに接続できません。ページを再読み込みしてください。';
+    btn.disabled = false; btn.textContent = '追加する';
+    return;
+  }
+
   try {
     var result = await db.from('topics').insert({
       title:       title,
@@ -393,6 +424,8 @@ async function deleteTopicFromModal() {
   if (!currentTopicId) return;
   if (!confirm('このトピックを削除しますか？')) return;
 
+  if (!await ensureDb()) { alert('データベースに接続できません'); return; }
+
   try {
     var result = await db.from('topics').delete().eq('id', currentTopicId);
     if (result.error) throw result.error;
@@ -436,6 +469,12 @@ async function resolveTopic() {
   btn.disabled    = true;
   btn.textContent = '処理中…';
   errEl.textContent = '';
+
+  if (!await ensureDb()) {
+    errEl.textContent = 'データベースに接続できません。ページを再読み込みしてください。';
+    btn.disabled = false; btn.textContent = '✅ 解決済みにする';
+    return;
+  }
 
   try {
     var result = await db.from('topics').update({
