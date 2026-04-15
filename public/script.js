@@ -26,8 +26,6 @@ var selectedPriority = 'normal';
 var currentTopicId   = null;
 var _currentTopicData = null;
 
-const AUTH_EXPIRY = 24 * 60 * 60 * 1000;
-
 const CATEGORIES = {
   money:     { label: 'お金',       emoji: '💰', color: '#1B7F4C', bg: '#EEFBF4' },
   childcare: { label: '育児・子ども', emoji: '👶', color: '#C4456E', bg: '#FFF0F5' },
@@ -59,14 +57,11 @@ async function ensureDb() {
 
 // ===== 認証 =====
 function checkAuth() {
-  const t = localStorage.getItem('konya_auth_time');
   const u = localStorage.getItem('konya_user');
-  if (t && u && (Date.now() - parseInt(t)) < AUTH_EXPIRY) {
+  if (u) {
     currentUser = u;
     showMainApp();
   } else {
-    localStorage.removeItem('konya_auth_time');
-    localStorage.removeItem('konya_user');
     showAuthScreen();
   }
 }
@@ -79,39 +74,14 @@ function selectUser(user) {
 }
 
 function authenticate() {
-  const pw    = document.getElementById('passwordInput').value;
   const errEl = document.getElementById('authError');
-
   if (!currentUser) { errEl.textContent = 'パパかママを選んでください'; return; }
-  if (!pw)          { errEl.textContent = 'パスワードを入力してください'; return; }
-
-  const correctPw = window._appConfig && window._appConfig.password
-    ? window._appConfig.password
-    : 'こんや';
-
-  if (pw === correctPw) {
-    errEl.textContent = '';
-    localStorage.setItem('konya_auth_time', Date.now().toString());
-    localStorage.setItem('konya_user', currentUser);
-    showMainApp();
-  } else {
-    errEl.textContent = 'パスワードが正しくありません';
-    document.getElementById('passwordInput').value = '';
-    const card = document.querySelector('.auth-card');
-    card.style.animation = 'none';
-    setTimeout(function() { card.style.animation = 'authShake 0.4s ease'; }, 10);
-  }
-}
-
-function togglePasswordVisibility() {
-  const input = document.getElementById('passwordInput');
-  const icon  = document.getElementById('eyeIcon');
-  if (input.type === 'password') { input.type = 'text';     icon.textContent = '🙈'; }
-  else                           { input.type = 'password'; icon.textContent = '👁'; }
+  errEl.textContent = '';
+  localStorage.setItem('konya_user', currentUser);
+  showMainApp();
 }
 
 function logout() {
-  localStorage.removeItem('konya_auth_time');
   localStorage.removeItem('konya_user');
   location.reload();
 }
@@ -535,11 +505,6 @@ function showCelebration() {
 
 // ===== 初期化 =====
 window.addEventListener('load', async function() {
-
-  // Enter でログイン
-  document.getElementById('passwordInput').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') authenticate();
-  });
 
   // モーダル外クリックで閉じる
   ['addModal', 'topicModal', 'resolveModal'].forEach(function(id) {
