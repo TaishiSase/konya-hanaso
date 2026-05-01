@@ -40,7 +40,11 @@
         </button>
       </div>
 
-      <button onclick="authenticate()" class="btn-login">はじめる</button>
+      <div class="password-wrap">
+        <input type="password" id="authPassword" class="password-input"
+          placeholder="パスワードを入力" autocomplete="current-password">
+      </div>
+      <button onclick="authenticate()" class="btn-login" id="btnLogin">はじめる</button>
       <p class="auth-error" id="authError"></p>
     </div>
   </div>

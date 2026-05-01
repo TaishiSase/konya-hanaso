@@ -56,14 +56,11 @@ async function ensureDb() {
 }
 
 // ===== 認証 =====
-function checkAuth() {
-  const u = localStorage.getItem('konya_user');
-  if (u) {
-    currentUser = u;
-    showMainApp();
-  } else {
-    showAuthScreen();
-  }
+async function checkAuth() {
+  var { data: { session } } = await db.auth.getSession();
+  if (!session) { showAuthScreen(); return; }
+  currentUser = session.user.email === window._appConfig.papaEmail ? 'papa' : 'mama';
+  showMainApp();
 }
 
 function selectUser(user) {
@@ -71,18 +68,27 @@ function selectUser(user) {
   document.getElementById('userBtnPapa').classList.toggle('selected', user === 'papa');
   document.getElementById('userBtnMama').classList.toggle('selected', user === 'mama');
   document.getElementById('authError').textContent = '';
+  document.getElementById('authPassword').focus();
 }
 
-function authenticate() {
-  const errEl = document.getElementById('authError');
+async function authenticate() {
+  var errEl = document.getElementById('authError');
   if (!currentUser) { errEl.textContent = 'パパかママを選んでください'; return; }
-  errEl.textContent = '';
-  localStorage.setItem('konya_user', currentUser);
+  var pw    = document.getElementById('authPassword').value.trim();
+  if (!pw)  { errEl.textContent = 'パスワードを入力してください'; return; }
+  var email = currentUser === 'papa' ? window._appConfig.papaEmail : window._appConfig.mamaEmail;
+  var btn   = document.getElementById('btnLogin');
+  btn.disabled    = true;
+  btn.textContent = '確認中…';
+  var { error } = await db.auth.signInWithPassword({ email: email, password: pw });
+  btn.disabled    = false;
+  btn.textContent = 'はじめる';
+  if (error) { errEl.textContent = 'パスワードが違います'; return; }
   showMainApp();
 }
 
-function logout() {
-  localStorage.removeItem('konya_user');
+async function logout() {
+  await db.auth.signOut();
   location.reload();
 }
 
@@ -534,5 +540,9 @@ window.addEventListener('load', async function() {
     console.error('Supabase初期化エラー:', err);
   }
 
-  checkAuth();
+  await checkAuth();
+
+  document.getElementById('authPassword').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') authenticate();
+  });
 });
