@@ -11,20 +11,33 @@
 //   added_by TEXT NOT NULL,
 //   is_resolved BOOLEAN DEFAULT FALSE,
 //   resolution_memo TEXT,
+//   talk_timing TEXT NOT NULL DEFAULT 'anytime',  -- 'anytime' | 'asap' | 'specific_date'
+//   talk_date DATE,
 //   created_at TIMESTAMPTZ DEFAULT NOW(),
 //   resolved_at TIMESTAMPTZ
 // );
 //
-// ALTER TABLE topics ENABLE ROW LEVEL SECURITY;
-// CREATE POLICY "allow_all" ON topics FOR ALL TO anon USING (true) WITH CHECK (true);
+// CREATE TABLE discussion_logs (
+//   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+//   topic_id UUID NOT NULL REFERENCES topics(id) ON DELETE CASCADE,
+//   comment TEXT NOT NULL,
+//   added_by TEXT NOT NULL,
+//   created_at TIMESTAMPTZ DEFAULT NOW()
+// );
 // =============================================
 
 var db = null;
-var currentUser     = null;  // 'papa' | 'mama'
+var currentUser      = null;  // 'papa' | 'mama'
 var selectedCategory = null;
 var selectedPriority = 'normal';
+var selectedTiming   = 'anytime';
 var currentTopicId   = null;
 var _currentTopicData = null;
+
+// 編集モーダル用
+var selectedEditCategory = null;
+var selectedEditPriority = 'normal';
+var selectedEditTiming   = 'anytime';
 
 const CATEGORIES = {
   money:     { label: 'お金',       emoji: '💰', color: '#1B7F4C', bg: '#EEFBF4' },
@@ -36,11 +49,10 @@ const CATEGORIES = {
 
 // ===== Supabase =====
 async function initSupabase(config) {
-  const { createClient } = window.supabase;
+  var { createClient } = window.supabase;
   db = createClient(config.supabaseUrl, config.supabaseKey);
 }
 
-// db が null なら config.json から再初期化を試みる
 async function ensureDb() {
   if (db) return true;
   try {
@@ -113,20 +125,32 @@ function goToPage(pageName) {
   var btn = document.querySelector('.bnav-btn[data-page="' + pageName + '"]');
   if (btn) btn.classList.add('active');
 
-  if (pageName === 'topics')  loadTopics();
+  if (pageName === 'topics')       loadTopics();
   else if (pageName === 'history') loadHistory();
 }
 
 // ===== ユーティリティ =====
 function esc(str) {
   var d = document.createElement('div');
-  d.textContent = str;
+  d.textContent = str || '';
   return d.innerHTML;
 }
 
 function formatDate(dateStr) {
   var d = new Date(dateStr);
   return d.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function formatDateShort(dateStr) {
+  if (!dateStr) return '';
+  var parts = dateStr.split('-');
+  return parseInt(parts[1]) + '/' + parseInt(parts[2]);
+}
+
+function formatDateTime(dateStr) {
+  var d = new Date(dateStr);
+  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
 function formatRelativeDate(dateStr) {
@@ -138,6 +162,17 @@ function formatRelativeDate(dateStr) {
   if (diff < 7)  return diff + '日前';
   if (diff < 30) return Math.floor(diff / 7) + '週間前';
   return formatDate(dateStr);
+}
+
+function timingBadgeHtml(topic) {
+  var timing = topic.talk_timing || 'anytime';
+  if (timing === 'asap') {
+    return '<span class="badge badge-asap">🚨 早めに</span>';
+  }
+  if (timing === 'specific_date' && topic.talk_date) {
+    return '<span class="badge badge-date">📅 ' + esc(formatDateShort(topic.talk_date)) + '</span>';
+  }
+  return '';
 }
 
 // ===== トピック一覧 =====
@@ -159,10 +194,19 @@ async function loadTopics() {
 
     var data = result.data || [];
 
-    // 急ぎ → 普通 の順（同じ優先度なら新しい順を維持）
+    // 並び順: 急ぎ → asap → specific_date（近い順）→ anytime
     data.sort(function(a, b) {
-      if (a.priority === b.priority) return 0;
-      return a.priority === 'urgent' ? -1 : 1;
+      var urgentA = a.priority === 'urgent' ? 0 : 1;
+      var urgentB = b.priority === 'urgent' ? 0 : 1;
+      if (urgentA !== urgentB) return urgentA - urgentB;
+      var timingOrder = { asap: 0, specific_date: 1, anytime: 2 };
+      var tA = timingOrder[a.talk_timing || 'anytime'];
+      var tB = timingOrder[b.talk_timing || 'anytime'];
+      if (tA !== tB) return tA - tB;
+      if ((a.talk_timing || 'anytime') === 'specific_date' && a.talk_date && b.talk_date) {
+        return a.talk_date < b.talk_date ? -1 : 1;
+      }
+      return 0;
     });
 
     var countEl = document.getElementById('topicCount');
@@ -239,7 +283,7 @@ async function loadHistory() {
 }
 
 function renderTopicCard(topic, isHistory) {
-  var cat = CATEGORIES[topic.category] || CATEGORIES.couple;
+  var cat  = CATEGORIES[topic.category] || CATEGORIES.couple;
   var card = document.createElement('div');
   card.className = 'topic-card' +
     (topic.priority === 'urgent' && !isHistory ? ' urgent' : '') +
@@ -255,6 +299,9 @@ function renderTopicCard(topic, isHistory) {
   }
   html += '<span class="badge" style="background:' + cat.bg + ';color:' + cat.color + '">' +
     cat.emoji + ' ' + esc(cat.label) + '</span>';
+  if (!isHistory) {
+    html += timingBadgeHtml(topic);
+  }
   html += '</div>';
   if (isHistory) {
     html += '<span class="resolved-badge">✅ 解決済み</span>';
@@ -296,12 +343,20 @@ function renderTopicCard(topic, isHistory) {
 function showAddModal() {
   selectedCategory = null;
   selectedPriority = 'normal';
+  selectedTiming   = 'anytime';
+
   document.getElementById('topicTitleInput').value = '';
   document.getElementById('addError').textContent  = '';
 
-  document.querySelectorAll('.cat-chip').forEach(function(c) { c.classList.remove('selected'); });
+  document.querySelectorAll('#catChips .cat-chip').forEach(function(c) { c.classList.remove('selected'); });
   document.getElementById('priorityNormal').classList.add('active');
   document.getElementById('priorityUrgent').classList.remove('active');
+
+  document.querySelectorAll('#addTimingToggle .timing-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-timing') === 'anytime');
+  });
+  document.getElementById('timingDateWrap').style.display = 'none';
+  document.getElementById('timingDateInput').value = '';
 
   var btn = document.getElementById('addSubmitBtn');
   btn.disabled    = false;
@@ -319,7 +374,7 @@ function hideAddModal() {
 
 function selectCategory(cat) {
   selectedCategory = cat;
-  document.querySelectorAll('.cat-chip').forEach(function(c) {
+  document.querySelectorAll('#catChips .cat-chip').forEach(function(c) {
     c.classList.toggle('selected', c.getAttribute('data-cat') === cat);
   });
   document.getElementById('addError').textContent = '';
@@ -331,6 +386,14 @@ function selectPriority(priority) {
   document.getElementById('priorityUrgent').classList.toggle('active', priority === 'urgent');
 }
 
+function selectTiming(timing) {
+  selectedTiming = timing;
+  document.querySelectorAll('#addTimingToggle .timing-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-timing') === timing);
+  });
+  document.getElementById('timingDateWrap').style.display = timing === 'specific_date' ? 'block' : 'none';
+}
+
 async function submitTopic() {
   var title = document.getElementById('topicTitleInput').value.trim();
   var errEl = document.getElementById('addError');
@@ -338,6 +401,12 @@ async function submitTopic() {
 
   if (!title)            { errEl.textContent = 'タイトルを入力してください'; return; }
   if (!selectedCategory) { errEl.textContent = 'カテゴリを選んでください';   return; }
+
+  var talkDate = null;
+  if (selectedTiming === 'specific_date') {
+    talkDate = document.getElementById('timingDateInput').value;
+    if (!talkDate) { errEl.textContent = '日にちを選んでください'; return; }
+  }
   errEl.textContent = '';
 
   btn.disabled    = true;
@@ -354,6 +423,8 @@ async function submitTopic() {
       title:       title,
       category:    selectedCategory,
       priority:    selectedPriority,
+      talk_timing: selectedTiming,
+      talk_date:   talkDate,
       added_by:    currentUser,
       is_resolved: false
     });
@@ -375,7 +446,7 @@ function showTopicModal(topicId, topicData) {
   currentTopicId    = topicId;
   _currentTopicData = topicData;
 
-  var cat = CATEGORIES[topicData.category] || CATEGORIES.couple;
+  var cat          = CATEGORIES[topicData.category] || CATEGORIES.couple;
   var addedByLabel = topicData.added_by === 'papa' ? 'パパ' : 'ママ';
 
   document.getElementById('topicModalContent').innerHTML =
@@ -385,11 +456,19 @@ function showTopicModal(topicId, topicData) {
       '<span class="badge" style="background:' + cat.bg + ';color:' + cat.color + '">' +
         cat.emoji + ' ' + esc(cat.label) +
       '</span>' +
+      timingBadgeHtml(topicData) +
     '</div>' +
     '<div class="topic-detail-title">' + esc(topicData.title) + '</div>' +
     '<div class="topic-detail-meta">' +
       esc(addedByLabel) + ' が ' + esc(formatDate(topicData.created_at)) + ' に追加' +
     '</div>';
+
+  document.getElementById('newLogInput').value = '';
+  var addLogBtn = document.getElementById('addLogBtn');
+  addLogBtn.disabled    = false;
+  addLogBtn.textContent = '📝 ログを追加';
+
+  loadDiscussionLogs(topicId);
 
   document.getElementById('topicModal').classList.add('active');
   document.body.style.overflow = 'hidden';
@@ -402,6 +481,200 @@ function hideTopicModal() {
   _currentTopicData = null;
 }
 
+// ===== 話し合いログ =====
+async function loadDiscussionLogs(topicId) {
+  var container = document.getElementById('discussionLogsList');
+  container.innerHTML = '<p class="logs-empty" style="padding:8px">読み込み中…</p>';
+
+  if (!await ensureDb()) return;
+
+  try {
+    var result = await db.from('discussion_logs')
+      .select('*')
+      .eq('topic_id', topicId)
+      .order('created_at', { ascending: true });
+    if (result.error) throw result.error;
+
+    var logs = result.data || [];
+
+    if (logs.length === 0) {
+      container.innerHTML = '<p class="logs-empty">まだログはありません</p>';
+      return;
+    }
+
+    container.innerHTML = '';
+    logs.forEach(function(log) {
+      var item  = document.createElement('div');
+      item.className = 'log-item';
+      var emoji = log.added_by === 'papa' ? '👨' : '👩';
+      var name  = log.added_by === 'papa' ? 'パパ' : 'ママ';
+      item.innerHTML =
+        '<div class="log-meta">' + emoji + ' ' + esc(name) + ' · ' + esc(formatDateTime(log.created_at)) + '</div>' +
+        '<div class="log-comment">' + esc(log.comment) + '</div>';
+      container.appendChild(item);
+    });
+
+  } catch (err) {
+    console.error('ログ読み込みエラー:', err);
+    container.innerHTML = '<p class="logs-empty">読み込みに失敗しました</p>';
+  }
+}
+
+async function addDiscussionLog() {
+  if (!currentTopicId) return;
+  var comment = document.getElementById('newLogInput').value.trim();
+  if (!comment) return;
+
+  var btn = document.getElementById('addLogBtn');
+  btn.disabled    = true;
+  btn.textContent = '追加中…';
+
+  if (!await ensureDb()) {
+    btn.disabled    = false;
+    btn.textContent = '📝 ログを追加';
+    return;
+  }
+
+  try {
+    var result = await db.from('discussion_logs').insert({
+      topic_id: currentTopicId,
+      comment:  comment,
+      added_by: currentUser
+    });
+    if (result.error) throw result.error;
+
+    document.getElementById('newLogInput').value = '';
+    loadDiscussionLogs(currentTopicId);
+
+  } catch (err) {
+    console.error('ログ追加エラー:', err);
+    alert('ログの追加に失敗しました');
+  }
+
+  btn.disabled    = false;
+  btn.textContent = '📝 ログを追加';
+}
+
+// ===== 編集モーダル =====
+function showEditModal() {
+  if (!_currentTopicData) return;
+  var t = _currentTopicData;
+
+  selectedEditCategory = t.category;
+  selectedEditPriority = t.priority;
+  selectedEditTiming   = t.talk_timing || 'anytime';
+
+  document.getElementById('editTitleInput').value = t.title;
+  document.getElementById('editError').textContent = '';
+
+  document.querySelectorAll('#editCatChips .cat-chip').forEach(function(c) {
+    c.classList.toggle('selected', c.getAttribute('data-cat') === t.category);
+  });
+
+  document.getElementById('editPriorityNormal').classList.toggle('active', t.priority === 'normal');
+  document.getElementById('editPriorityUrgent').classList.toggle('active', t.priority === 'urgent');
+
+  document.querySelectorAll('#editTimingToggle .timing-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-timing') === selectedEditTiming);
+  });
+  document.getElementById('editTimingDateInput').value = t.talk_date || '';
+  document.getElementById('editTimingDateWrap').style.display =
+    selectedEditTiming === 'specific_date' ? 'block' : 'none';
+
+  var btn = document.getElementById('editSubmitBtn');
+  btn.disabled    = false;
+  btn.textContent = '保存する';
+
+  document.getElementById('topicModal').classList.remove('active');
+  document.getElementById('editModal').classList.add('active');
+}
+
+function cancelEditModal() {
+  document.getElementById('editModal').classList.remove('active');
+  if (currentTopicId && _currentTopicData) {
+    document.getElementById('topicModal').classList.add('active');
+  } else {
+    document.body.style.overflow = '';
+  }
+}
+
+function hideEditModal() {
+  document.getElementById('editModal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+function selectEditCategory(cat) {
+  selectedEditCategory = cat;
+  document.querySelectorAll('#editCatChips .cat-chip').forEach(function(c) {
+    c.classList.toggle('selected', c.getAttribute('data-cat') === cat);
+  });
+}
+
+function selectEditPriority(p) {
+  selectedEditPriority = p;
+  document.getElementById('editPriorityNormal').classList.toggle('active', p === 'normal');
+  document.getElementById('editPriorityUrgent').classList.toggle('active', p === 'urgent');
+}
+
+function selectEditTiming(t) {
+  selectedEditTiming = t;
+  document.querySelectorAll('#editTimingToggle .timing-btn').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-timing') === t);
+  });
+  document.getElementById('editTimingDateWrap').style.display =
+    t === 'specific_date' ? 'block' : 'none';
+}
+
+async function submitEditTopic() {
+  var title = document.getElementById('editTitleInput').value.trim();
+  var errEl = document.getElementById('editError');
+  var btn   = document.getElementById('editSubmitBtn');
+
+  if (!title)               { errEl.textContent = 'タイトルを入力してください'; return; }
+  if (!selectedEditCategory){ errEl.textContent = 'カテゴリを選んでください';   return; }
+
+  var talkDate = null;
+  if (selectedEditTiming === 'specific_date') {
+    talkDate = document.getElementById('editTimingDateInput').value;
+    if (!talkDate) { errEl.textContent = '日にちを選んでください'; return; }
+  }
+  errEl.textContent = '';
+
+  btn.disabled    = true;
+  btn.textContent = '保存中…';
+
+  if (!await ensureDb()) {
+    errEl.textContent = 'データベースに接続できません';
+    btn.disabled = false; btn.textContent = '保存する';
+    return;
+  }
+
+  try {
+    var updateData = {
+      title:       title,
+      category:    selectedEditCategory,
+      priority:    selectedEditPriority,
+      talk_timing: selectedEditTiming,
+      talk_date:   talkDate
+    };
+    var result = await db.from('topics').update(updateData).eq('id', currentTopicId);
+    if (result.error) throw result.error;
+
+    _currentTopicData = Object.assign({}, _currentTopicData, updateData);
+
+    document.getElementById('editModal').classList.remove('active');
+    loadTopics();
+    showTopicModal(currentTopicId, _currentTopicData);
+
+  } catch (err) {
+    console.error('編集エラー:', err);
+    errEl.textContent = '保存に失敗しました: ' + err.message;
+    btn.disabled    = false;
+    btn.textContent = '保存する';
+  }
+}
+
+// ===== 削除 =====
 async function deleteTopicFromModal() {
   if (!currentTopicId) return;
   if (!confirm('このトピックを削除しますか？')) return;
@@ -430,11 +703,8 @@ function showResolveModal() {
   btn.disabled    = false;
   btn.textContent = '✅ 解決済みにする';
 
-  // hideTopicModal() は使わない（currentTopicId がリセットされるため）
   document.getElementById('topicModal').classList.remove('active');
-
   document.getElementById('resolveModal').classList.add('active');
-  document.body.style.overflow = 'hidden';
 }
 
 function hideResolveModal() {
@@ -513,12 +783,13 @@ function showCelebration() {
 window.addEventListener('load', async function() {
 
   // モーダル外クリックで閉じる
-  ['addModal', 'topicModal', 'resolveModal'].forEach(function(id) {
+  ['addModal', 'topicModal', 'resolveModal', 'editModal'].forEach(function(id) {
     document.getElementById(id).addEventListener('click', function(e) {
       if (e.target.id !== id) return;
       if (id === 'addModal')     hideAddModal();
       if (id === 'topicModal')   hideTopicModal();
       if (id === 'resolveModal') hideResolveModal();
+      if (id === 'editModal')    hideEditModal();
     });
   });
 
@@ -528,6 +799,7 @@ window.addEventListener('load', async function() {
     hideAddModal();
     hideTopicModal();
     hideResolveModal();
+    hideEditModal();
   });
 
   // Supabase 初期化

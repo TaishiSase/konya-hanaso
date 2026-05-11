@@ -135,6 +135,17 @@
             <button class="priority-btn" id="priorityUrgent" onclick="selectPriority('urgent')">🔥 急ぎ</button>
           </div>
         </div>
+        <div class="form-group">
+          <label class="form-label">いつ話す？</label>
+          <div class="timing-toggle" id="addTimingToggle">
+            <button class="timing-btn active" data-timing="anytime" onclick="selectTiming('anytime')">いつでもOK</button>
+            <button class="timing-btn" data-timing="asap" onclick="selectTiming('asap')">🚨 早めに</button>
+            <button class="timing-btn" data-timing="specific_date" onclick="selectTiming('specific_date')">📅 日にち指定</button>
+          </div>
+          <div id="timingDateWrap" class="timing-date-wrap">
+            <input type="date" id="timingDateInput" class="form-input">
+          </div>
+        </div>
         <p class="form-error" id="addError"></p>
         <button class="btn-submit" id="addSubmitBtn" onclick="submitTopic()">追加する</button>
       </div>
@@ -150,10 +161,71 @@
       </div>
       <div class="modal-body">
         <div id="topicModalContent"></div>
+
+        <!-- 話し合いログ -->
+        <div class="discussion-logs-section">
+          <div class="logs-title">📋 話し合いログ</div>
+          <div id="discussionLogsList" class="discussion-logs-list">
+            <p class="logs-empty">まだログはありません</p>
+          </div>
+          <div class="log-add-form">
+            <textarea id="newLogInput" class="form-textarea" rows="2" maxlength="300"
+                      placeholder="話し合ったことをメモ…"></textarea>
+            <button class="btn-add-log" id="addLogBtn" onclick="addDiscussionLog()">📝 ログを追加</button>
+          </div>
+        </div>
+
         <div class="topic-actions">
+          <button class="btn-edit-action" onclick="showEditModal()">✏️ 議題を編集</button>
           <button class="btn-resolve-action" onclick="showResolveModal()">✅ 解決済みにする</button>
           <button class="btn-delete-action" onclick="deleteTopicFromModal()">🗑 削除する</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 編集モーダル -->
+  <div id="editModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">議題を編集</h3>
+        <button class="modal-close" onclick="cancelEditModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">内容</label>
+          <input type="text" id="editTitleInput" class="form-input" maxlength="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">カテゴリ</label>
+          <div class="cat-chips" id="editCatChips">
+            <button class="cat-chip" data-cat="money"     onclick="selectEditCategory('money')">💰 お金</button>
+            <button class="cat-chip" data-cat="childcare" onclick="selectEditCategory('childcare')">👶 育児・子ども</button>
+            <button class="cat-chip" data-cat="home"      onclick="selectEditCategory('home')">🏠 家のこと</button>
+            <button class="cat-chip" data-cat="couple"    onclick="selectEditCategory('couple')">💑 二人のこと</button>
+            <button class="cat-chip" data-cat="work"      onclick="selectEditCategory('work')">💼 仕事のこと</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">優先度</label>
+          <div class="priority-toggle">
+            <button class="priority-btn" id="editPriorityNormal" onclick="selectEditPriority('normal')">普通</button>
+            <button class="priority-btn" id="editPriorityUrgent" onclick="selectEditPriority('urgent')">🔥 急ぎ</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">いつ話す？</label>
+          <div class="timing-toggle" id="editTimingToggle">
+            <button class="timing-btn" data-timing="anytime" onclick="selectEditTiming('anytime')">いつでもOK</button>
+            <button class="timing-btn" data-timing="asap" onclick="selectEditTiming('asap')">🚨 早めに</button>
+            <button class="timing-btn" data-timing="specific_date" onclick="selectEditTiming('specific_date')">📅 日にち指定</button>
+          </div>
+          <div id="editTimingDateWrap" class="timing-date-wrap">
+            <input type="date" id="editTimingDateInput" class="form-input">
+          </div>
+        </div>
+        <p class="form-error" id="editError"></p>
+        <button class="btn-submit" id="editSubmitBtn" onclick="submitEditTopic()">保存する</button>
       </div>
     </div>
   </div>
