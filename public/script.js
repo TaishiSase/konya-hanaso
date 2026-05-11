@@ -548,7 +548,7 @@ async function addDiscussionLog() {
 
   } catch (err) {
     console.error('ログ追加エラー:', err);
-    alert('ログの追加に失敗しました');
+    alert('ログの追加に失敗しました: ' + (err.message || JSON.stringify(err)));
   }
 
   btn.disabled    = false;
