@@ -1,3 +1,10 @@
 {
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "https://sase-apps.vercel.app/talk/",
+      "permanent": false
+    }
+  ]
 }
