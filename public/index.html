@@ -16,8 +16,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<link rel="stylesheet" href="family-ux.css">
 </head>
 <body>
+<div class="family-bar"><a href="https://sase-apps.vercel.app/">‹ 佐瀬家ホーム</a><a href="https://sase-apps.vercel.app/#apps">アプリ一覧</a></div><p id="familyStatus" class="family-status" role="status"></p>
 
   <!-- 認証画面 -->
   <div id="authScreen" class="auth-screen active">
@@ -121,6 +123,7 @@
           <input type="text" id="topicTitleInput" placeholder="例：保育園の選び方を相談したい"
                  class="form-input" maxlength="100">
         </div>
+        <p class="ux-help">一言だけでも保存できます。分類は「二人のこと」で保存され、後から変更できます。</p><details class="ux-details"><summary>カテゴリ・優先度・話す日を設定</summary>
         <div class="form-group">
           <label class="form-label">カテゴリ</label>
           <div class="cat-chips" id="catChips">
@@ -149,6 +152,7 @@
             <input type="date" id="timingDateInput" class="form-input">
           </div>
         </div>
+        </details>
         <p class="form-error" id="addError"></p>
         <button class="btn-submit" id="addSubmitBtn" onclick="submitTopic()">追加する</button>
       </div>
@@ -264,5 +268,6 @@
   </div>
 
   <script src="script.js"></script>
+<script src="family-ux.js"></script>
 </body>
 </html>

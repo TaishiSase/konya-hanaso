@@ -114,6 +114,8 @@ function showMainApp() {
   document.getElementById('mainApp').classList.add('active');
   document.getElementById('headerUser').textContent = currentUser === 'papa' ? 'パパとして' : 'ママとして';
   goToPage('topics');
+  var topicId=new URLSearchParams(location.search).get('topic');
+  if(topicId) db.from('topics').select('*').eq('id',topicId).maybeSingle().then(function(r){if(!r.error&&r.data)showTopicModal(r.data.id,r.data);});
 }
 
 // ===== ページ遷移 =====
@@ -341,7 +343,7 @@ function renderTopicCard(topic, isHistory) {
 
 // ===== 追加モーダル =====
 function showAddModal() {
-  selectedCategory = null;
+  selectedCategory = 'couple';
   selectedPriority = 'normal';
   selectedTiming   = 'anytime';
 
@@ -362,6 +364,7 @@ function showAddModal() {
   btn.disabled    = false;
   btn.textContent = '追加する';
 
+  selectCategory('couple');
   document.getElementById('addModal').classList.add('active');
   document.body.style.overflow = 'hidden';
   setTimeout(function() { document.getElementById('topicTitleInput').focus(); }, 300);
